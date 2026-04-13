@@ -2,13 +2,14 @@ name: 🔄 Update ADG Rules
 
 on:
   schedule:
-    - cron: '0 20 * * *'
+    - cron: '0 20 * * *'  # 北京时间 04:00
   workflow_dispatch:
 
 jobs:
   build:
     name: 🛠️ 规则加工处理
     runs-on: ubuntu-latest
+    timeout-minutes: 15  # ← 超时保护
     permissions:
       contents: write 
     
@@ -22,18 +23,29 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-          # 删掉了引起报错的 cache: 'pip'
 
-      - name: 📦 安装必要依赖
-        run: pip install requests urllib3
+      - name: 📦 安装依赖
+        run: pip install -q requests urllib3  # ← 静默安装
 
       - name: 🚀 执行规则合并脚本
         run: python process_rules.py -o my_adg_rules.txt
 
-      - name: 📤 智能提交与同步
+      - name: 🔍 验证输出
+        run: |
+          [ -s my_adg_rules.txt ] || { echo "❌ Empty file!"; exit 1; }
+          echo "✅ $(wc -l < my_adg_rules.txt) lines, $(du -h my_adg_rules.txt | cut -f1)"
+
+      - name: 📤 提交与推送
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: "🔄 自动同步更新：ADG 规则列表"
+          commit_message: "🔄 auto: ADG rules update"
           file_pattern: "my_adg_rules.txt"
           push_options: '--force'
           skip_fetch: true
+
+      - name: 📦 上传产物（调试用）
+        uses: actions/upload-artifact@v4
+        with:
+          name: rules-${{ github.run_number }}
+          path: my_adg_rules.txt
+          retention-days: 2
