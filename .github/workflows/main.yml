@@ -6,7 +6,7 @@ on:
   schedule:
     - cron: '0 20 * * *'
   
-  # 手动触发（支持传入参数）
+  # 手动触发
   workflow_dispatch:
     inputs:
       verbose:
@@ -15,149 +15,127 @@ on:
         default: 'false'
         type: boolean
       dry_run:
-        description: 'Dry run (no file commit)'
+        description: 'Dry run (no commit)'
         required: false
         default: 'false'
         type: boolean
-      output_file:
-        description: 'Custom output filename'
-        required: false
-        default: 'my_adg_rules.txt'
-        type: string
 
-  # 监听规则源仓库更新（可选，需配合 webhook）
-  # repository_dispatch:
-  #   types: [rules-source-updated]
-
-# 全局环境变量
 env:
   PYTHON_VERSION: '3.11'
-  OUTPUT_FILE: ${{ github.event.inputs.output_file || 'my_adg_rules.txt' }}
-  REQUIREMENTS_FILE: 'requirements.txt'
+  OUTPUT_FILE: 'my_adg_rules.txt'
 
 jobs:
   build:
-    name: 🛠️ Build & Update Rules
+    name: 🛠️ Build & Update
     runs-on: ubuntu-latest
     timeout-minutes: 15
     
     permissions:
-      contents: write          # 推送规则文件
-      actions: read            # 读取工作流状态（用于通知）
+      contents: write
     
     steps:
-      # ==================== 1. 初始化 ====================
+      # 1. 检出代码（关键：fetch-depth: 0 拉取完整历史）
       - name: ⬇️ Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 1       # 浅克隆加速
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: 🐍 Set up Python ${{ env.PYTHON_VERSION }}
+      # 2. 设置 Python
+      - name: 🐍 Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-          cache: 'pip'         # 自动缓存 pip 依赖
+          cache: 'pip'
 
+      # 3. 安装依赖
       - name: 📦 Install dependencies
         run: |
-          if [ -f "${{ env.REQUIREMENTS_FILE }}" ]; then
-            echo "Installing from ${{ env.REQUIREMENTS_FILE }}..."
-            pip install -r "${{ env.REQUIREMENTS_FILE }}"
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then
+            pip install -r requirements.txt
           else
-            echo "Installing fallback dependencies..."
             pip install requests urllib3
           fi
         shell: bash
 
-      # ==================== 2. 执行规则处理 ====================
-      - name: 🚀 Run rules aggregator
+      # 4. 运行规则处理脚本
+      - name: 🚀 Run rules processor
         id: process
         run: |
-          # 构建命令行参数
-          ARGS=""
+          # 构建参数
+          ARGS="-o ${{ env.OUTPUT_FILE }}"
           [ "${{ github.event.inputs.verbose }}" = "true" ] && ARGS="$ARGS -v"
           [ "${{ github.event.inputs.dry_run }}" = "true" ] && ARGS="$ARGS --dry-run"
-          ARGS="$ARGS -o ${{ env.OUTPUT_FILE }}"
           
           echo "Running: python process_rules.py $ARGS"
           python process_rules.py $ARGS
           
-          # 提取统计信息供后续步骤使用
+          # 提取统计信息
           if [ -f "${{ env.OUTPUT_FILE }}" ]; then
-            RULE_COUNT=$(grep -c '^||' "${{ env.OUTPUT_FILE }}" || echo "0")
-            FILE_SIZE=$(wc -c < "${{ env.OUTPUT_FILE }}" | xargs)
+            RULE_COUNT=$(grep -c '^||' "${{ env.OUTPUT_FILE }}" 2>/dev/null || echo "0")
+            FILE_SIZE=$(wc -c < "${{ env.OUTPUT_FILE }}" | tr -d ' ')
             echo "rule_count=$RULE_COUNT" >> $GITHUB_OUTPUT
             echo "file_size=$FILE_SIZE" >> $GITHUB_OUTPUT
-            echo "✅ Generated: $RULE_COUNT rules, $FILE_SIZE bytes"
+            echo "✅ Generated: $RULE_COUNT rules, $((FILE_SIZE/1024)) KB"
           fi
         shell: bash
 
-      # ==================== 3. 验证输出 ====================
-      - name: 🔍 Verify output file
+      # 5. 验证输出文件
+      - name: 🔍 Verify output
         if: ${{ github.event.inputs.dry_run != 'true' }}
         run: |
           FILE="${{ env.OUTPUT_FILE }}"
           
-          # 检查文件存在
-          [ -f "$FILE" ] || { echo "❌ Output file not found!"; exit 1; }
+          [ -f "$FILE" ] || { echo "❌ File not found"; exit 1; }
+          [ -s "$FILE" ] || { echo "❌ File is empty"; exit 1; }
           
-          # 检查文件非空
-          [ -s "$FILE" ] || { echo "❌ Output file is empty!"; exit 1; }
+          RULE_COUNT=$(grep -c '^||' "$FILE" 2>/dev/null || echo "0")
+          [ "$RULE_COUNT" -gt 0 ] || { echo "❌ No valid rules"; exit 1; }
           
-          # 检查包含有效规则
-          RULE_COUNT=$(grep -c '^||' "$FILE" || echo "0")
-          [ "$RULE_COUNT" -gt 0 ] || { echo "❌ No valid rules found!"; exit 1; }
-          
-          # 检查文件大小 (上限 15MB)
-          FILE_SIZE=$(wc -c < "$FILE" | xargs)
-          MAX_SIZE=$((15 * 1024 * 1024))
-          [ "$FILE_SIZE" -lt "$MAX_SIZE" ] || { 
-            echo "❌ File too large: $FILE_SIZE bytes > $MAX_SIZE"; 
-            exit 1; 
-          }
-          
-          echo "✅ Verification passed: $RULE_COUNT rules, $((FILE_SIZE/1024)) KB"
+          echo "✅ Verification passed: $RULE_COUNT rules"
         shell: bash
 
-      # ==================== 4. 提交推送（仅非 dry-run）====================
-      - name: 📤 Commit and push changes
+      # 6. 提交并推送（核心修复）
+      - name: 📤 Commit and push
         if: ${{ github.event.inputs.dry_run != 'true' }}
         run: |
-          # 仅当文件有变更时才提交
-          if git diff --quiet "${{ env.OUTPUT_FILE }}"; then
-            echo "ℹ️  No changes detected, skipping commit"
-            echo "changed=false" >> $GITHUB_OUTPUT
-            exit 0
-          fi
-          
-          echo "changed=true" >> $GITHUB_OUTPUT
-          
-          # 配置 git 用户
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
           
-          # 生成提交信息
-          RULE_COUNT=${{ steps.process.outputs.rule_count || 'unknown' }}
-          FILE_SIZE=${{ steps.process.outputs.file_size || 'unknown' }}
-          COMMIT_MSG="🔄 auto-update: ${{ env.OUTPUT_FILE }}
-
+          git add "${{ env.OUTPUT_FILE }}"
+          
+          # 检查是否有变更
+          if git diff --staged --quiet; then
+            echo "ℹ️  No changes to commit"
+            exit 0
+          fi
+          
+          # 提交
+          RULE_COUNT="${{ steps.process.outputs.rule_count }}"
+          FILE_SIZE="${{ steps.process.outputs.file_size }}"
+          git commit -m "🔄 auto-update: ${{ env.OUTPUT_FILE }}
+          
           Rules: $RULE_COUNT
           Size: $((FILE_SIZE/1024)) KB
-          Build: ${GITHUB_RUN_ID}
-          Trigger: ${{ github.event_name }}"
+          Build: ${GITHUB_RUN_ID}"
           
-          # 提交并推送
-          git add "${{ env.OUTPUT_FILE }}"
-          git commit -m "$COMMIT_MSG"
-          git push
+          # 拉取远程变更并推送
+          echo "🔄 Syncing with remote..."
+          git pull --rebase origin main || {
+            echo "⚠️  Rebase failed, trying pull..."
+            git pull origin main || true
+          }
           
-          echo "✅ Committed and pushed updates"
+          echo "📤 Pushing..."
+          git push origin main
+          
+          echo "✅ Update completed successfully"
         shell: bash
-        id: commit
 
-      # ==================== 5. 上传构建产物（可选）====================
+      # 7. 上传构建产物
       - name: 📦 Upload artifact
-        if: always()  # 即使失败也上传，便于调试
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: adg-rules-${{ github.run_number }}
@@ -165,55 +143,17 @@ jobs:
           retention-days: 3
           if-no-files-found: warn
 
-      # ==================== 6. 执行摘要 & 通知 ====================
-      - name: 📊 Print execution summary
+      # 8. 打印摘要
+      - name: 📊 Summary
         run: |
           echo ""
-          echo "╔════════════════════════════════════╗"
-          echo "║   🎯 ADG Rules Update Summary      ║"
-          echo "╠════════════════════════════════════╣"
+          echo "╔══════════════════════════════════════╗"
+          echo "║   🎯 ADG Rules Update Complete       ║"
+          echo "╠══════════════════════════════════════╣"
           echo "║  Workflow:   ${{ github.workflow }}"
           echo "║  Trigger:    ${{ github.event_name }}"
           echo "║  Run ID:     ${{ github.run_id }}"
           echo "║  Output:     ${{ env.OUTPUT_FILE }}"
           echo "║  Rules:      ${{ steps.process.outputs.rule_count || 'N/A' }}"
           echo "║  Size:       $(( ${{ steps.process.outputs.file_size || 0 }} / 1024 )) KB"
-          echo "║  Changed:    ${{ steps.commit.outputs.changed || 'skipped' }}"
-          echo "╚════════════════════════════════════╝"
-          echo ""
-
-      # ==================== 7. 失败通知（可选）====================
-      - name: 🔔 Notify on failure
-        if: failure()
-        run: |
-          # 示例：发送 Telegram 通知（需配置 secrets）
-          if [ -n "${{ secrets.TELEGRAM_BOT_TOKEN }}" ] && [ -n "${{ secrets.TELEGRAM_CHAT_ID }}" ]; then
-            curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
-              -d chat_id="${{ secrets.TELEGRAM_CHAT_ID }}" \
-              -d text="❌ ADG Rules Update Failed
-
-          🔗 Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          ⏰ Time: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" \
-              -d parse_mode="HTML" || true
-          fi
-          
-          # 示例：发送 Server酱/方糖通知（需配置 secrets）
-          if [ -n "${{ secrets.SCKEY }}" ]; then
-            curl -s -X POST "https://sctapi.ftqq.com/${{ secrets.SCKEY }}.send" \
-              -d title="❌ ADG Rules Update Failed" \
-              -d desp="Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" || true
-          fi
-        shell: bash
-
-      # ==================== 8. 清理缓存（可选）====================
-      - name: 🧹 Cleanup cache (weekly)
-        if: ${{ github.event.schedule == '0 20 * * *' && github.event_name == 'schedule' }}
-        run: |
-          # 每周一清理旧缓存，避免无限增长
-          if [ "$(date +%u)" = "1" ]; then
-            echo "🧹 Cleaning up old caches..."
-            gh extension install actions/gh-actions-cache 2>/dev/null || true
-            # 注意：需要额外权限，此处仅为示意
-          fi
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          echo "╚══════════════════════════════════════╝"
