@@ -1,0 +1,28 @@
+name: Update Rules
+on:
+  schedule:
+    - cron: '0 20 * * *' # 每天北京时间凌晨4点运行
+  workflow_dispatch: # 支持手动运行
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # 赋予推送权限
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+      - name: Install dependencies
+        run: pip install requests
+      - name: Run script
+        run: python process_rules.py
+      - name: Commit and Push
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add my_adg_rules.txt
+          git commit -m "Update rules: $(date)" || exit 0
+          git push
