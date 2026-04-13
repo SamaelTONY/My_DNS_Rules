@@ -1,35 +1,79 @@
-name: Update Rules
+name: 🔄 Update ADG Rules
 
 on:
   schedule:
-    - cron: '0 20 * * *'
-  workflow_dispatch:
+    - cron: '0 20 * * *' # 每天北京时间 04:00 执行
+  workflow_dispatch: # 支持手动触发
+    inputs:
+      verbose:
+        description: '显示详细日志'
+        default: 'false'
+        type: boolean
+
+env:
+  PYTHON_VERSION: '3.11'
+  OUTPUT_FILE: 'my_adg_rules.txt'
 
 jobs:
   build:
+    name: 🛠️ 规则加工处理
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: write # 必须赋予写权限
+    
     steps:
-      - uses: actions/checkout@v4
+      - name: ⬇️ 拉取仓库代码
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # 拉取全部历史，防止 rebase 失败
 
-      - name: Setup Python
+      - name: 🐍 设置 Python 环境
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
 
-      - name: Install requests
-        run: pip install requests
-
-      - name: Run script
-        run: python process_rules.py
-
-      - name: Commit and Force Push
+      - name: 📦 安装必要依赖
         run: |
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git config user.name "github-actions[bot]"
-          git add my_adg_rules.txt
-          git commit -m "auto: $(date)" || echo "No changes to commit"
-          echo "=== About to force push ==="
-          git push --force origin main
-          echo "=== Force push completed ==="
+          pip install requests urllib3
+        shell: bash
+
+      - name: 🚀 执行规则合并脚本
+        id: process
+        run: |
+          ARGS="-o ${{ env.OUTPUT_FILE }}"
+          if [ "${{ github.event.inputs.verbose }}" = "true" ]; then ARGS="$ARGS -v"; fi
+          
+          python process_rules.py $ARGS
+          
+          # 提取统计信息供提交信息使用
+          COUNT=$(grep -c '^||' "${{ env.OUTPUT_FILE }}" || echo "0")
+          echo "rule_count=$COUNT" >> $GITHUB_OUTPUT
+        shell: bash
+
+      - name: 📤 提交并同步到仓库
+        run: |
+          # 1. 配置 Git 身份
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+
+          # 2. 关键：先拉取云端更新，防止版本冲突
+          git pull --rebase origin main
+
+          # 3. 检查是否有规则变动
+          if git diff --quiet "${{ env.OUTPUT_FILE }}"; then
+            echo "ℹ️ 规则内容无变化，跳过提交"
+            exit 0
+          fi
+          
+          # 4. 提交并推送
+          git add "${{ env.OUTPUT_FILE }}"
+          git commit -m "🔄 自动更新规则: ${{ steps.process.outputs.rule_count }} 条"
+          git push origin main
+        shell: bash
+
+      - name: 📊 打印任务摘要
+        run: |
+          echo "✅ 任务完成！"
+          echo "生成文件: ${{ env.OUTPUT_FILE }}"
+          echo "规则总数: ${{ steps.process.outputs.rule_count }}"
