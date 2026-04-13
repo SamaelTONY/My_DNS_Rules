@@ -4,82 +4,41 @@ on:
   schedule:
     - cron: '0 20 * * *' # 每天北京时间 04:00 执行
   workflow_dispatch: # 支持手动触发
-    inputs:
-      verbose:
-        description: '显示详细日志'
-        default: 'false'
-        type: boolean
-
-env:
-  PYTHON_VERSION: '3.11'
-  OUTPUT_FILE: 'my_adg_rules.txt'
 
 jobs:
   build:
     name: 🛠️ 规则加工处理
     runs-on: ubuntu-latest
     permissions:
-      contents: write # 赋予写权限
+      contents: write # 必须的权限：允许写入仓库
     
     steps:
       - name: ⬇️ 拉取仓库代码
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # 获取完整历史以支持 rebase
+          fetch-depth: 0 # 获取完整历史以防冲突
+          token: ${{ github.token }}
 
       - name: 🐍 设置 Python 环境
         uses: actions/setup-python@v5
         with:
-          python-version: ${{ env.PYTHON_VERSION }}
+          python-version: '3.11'
           cache: 'pip'
 
       - name: 📦 安装必要依赖
-        run: |
-          pip install requests urllib3
-        shell: bash
+        run: pip install requests urllib3
 
       - name: 🚀 执行规则合并脚本
-        id: process
-        run: |
-          # 确保脚本存在
-          if [ ! -f "process_rules.py" ]; then
-            echo "❌ process_rules.py not found!"
-            exit 1
-          fi
-          
-          ARGS="-o ${{ env.OUTPUT_FILE }}"
-          [ "${{ github.event.inputs.verbose }}" = "true" ] && ARGS="$ARGS -v"
-          
-          python process_rules.py $ARGS
-          
-          # 提取统计信息
-          COUNT=$(grep -c '^||' "${{ env.OUTPUT_FILE }}" || echo "0")
-          echo "rule_count=$COUNT" >> $GITHUB_OUTPUT
-        shell: bash
+        run: python process_rules.py -o my_adg_rules.txt
 
-      - name: 📤 强制同步并推送
-        run: |
-          # 1. 配置 Git 身份
-          git config --local user.email "github-actions[bot]@users.noreply.github.com"
-          git config --local user.name "github-actions[bot]"
-
-          # 2. 核心步骤：先拉取云端变动并变基，彻底解决 [rejected] 冲突
-          git pull --rebase origin main
-
-          # 3. 检查规则是否有实际变动
-          if git diff --quiet "${{ env.OUTPUT_FILE }}"; then
-            echo "ℹ️ 规则内容无变化，跳过提交"
-            exit 0
-          fi
-          
-          # 4. 提交并推送
-          git add "${{ env.OUTPUT_FILE }}"
-          git commit -m "🔄 自动更新规则: ${{ steps.process.outputs.rule_count }} 条 [Skip CI]"
-          git push origin main
-        shell: bash
-
-      - name: 📊 任务摘要
-        run: |
-          echo "✅ 规则加工厂运行成功！"
-          echo "生成文件: ${{ env.OUTPUT_FILE }}"
-          echo "最终规模: ${{ steps.process.outputs.rule_count }} 条"
+      # ==========================================
+      # 终极杀手锏：使用专业插件接管所有 Git 提交流程
+      # ==========================================
+      - name: 📤 智能提交与同步
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "🔄 云端自动构建: 更新 ADG 规则"
+          file_pattern: "my_adg_rules.txt"
+          commit_user_name: "github-actions[bot]"
+          commit_user_email: "github-actions[bot]@users.noreply.github.com"
+          commit_author: "github-actions[bot] <github-actions[bot]@users.noreply.github.com>"
