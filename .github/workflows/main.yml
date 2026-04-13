@@ -12,24 +12,24 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      
+
       - name: Install requests
         run: pip install requests
-      
+
       - name: Run script
         run: python process_rules.py
-      
-      - name: Push with force
+
+      - name: Commit and Force Push
         run: |
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git config user.name "github-actions[bot]"
           git add my_adg_rules.txt
-          git commit -m "auto update" || echo "no changes"
-          echo "=== Executing force push ==="
+          git commit -m "auto: $(date)" || echo "No changes to commit"
+          echo "=== About to force push ==="
           git push --force origin main
-          echo "=== Push complete ==="
+          echo "=== Force push completed ==="
