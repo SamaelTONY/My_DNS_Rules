@@ -22,14 +22,16 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
 # ==================== 配置区域 ====================
-# 规则源列表 (支持注释掉不需要的源)
+# 规则源列表 - 2026 稳健加强版组合
 RULE_SOURCES = [
-    # hagezi 系列 - 轻量/平衡/严格
-    "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/tif.mini.txt",
-    "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/multi.txt",
-    # Cats-Team 中文优化规则
+    # 1. 恶意威胁情报 - 中等强度（防护木马、钓鱼，不影响正常业务）
+    "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/tif.medium.txt",
+    
+    # 2. 中文环境核心 - 全能优化（针对国内 App 和网站的去广告核心）
     "https://raw.githubusercontent.com/Cats-Team/AdRules/main/dns.txt",
-    # 可扩展更多源...
+    
+    # 3. 稳健去广告 - 平衡版（拦截追踪器的同时，确保联想摄像头等智能硬件不被误杀）
+    "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/multi.txt",
 ]
 
 # 输出配置
