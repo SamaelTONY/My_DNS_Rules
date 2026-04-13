@@ -2,22 +2,21 @@ name: 🔄 Update ADG Rules
 
 on:
   schedule:
-    - cron: '0 20 * * *' # 每天北京时间 04:00 执行
-  workflow_dispatch: # 支持手动触发
+    - cron: '0 20 * * *'
+  workflow_dispatch:
 
 jobs:
   build:
     name: 🛠️ 规则加工处理
     runs-on: ubuntu-latest
     permissions:
-      contents: write # 必须的权限：允许写入仓库
+      contents: write 
     
     steps:
       - name: ⬇️ 拉取仓库代码
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # 获取完整历史以防冲突
-          token: ${{ github.token }}
+          fetch-depth: 0
 
       - name: 🐍 设置 Python 环境
         uses: actions/setup-python@v5
@@ -31,14 +30,8 @@ jobs:
       - name: 🚀 执行规则合并脚本
         run: python process_rules.py -o my_adg_rules.txt
 
-      # ==========================================
-      # 终极杀手锏：使用专业插件接管所有 Git 提交流程
-      # ==========================================
       - name: 📤 智能提交与同步
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: "🔄 云端自动构建: 更新 ADG 规则"
+          commit_message: "🔄 自动同步更新：ADG 规则列表"
           file_pattern: "my_adg_rules.txt"
-          commit_user_name: "github-actions[bot]"
-          commit_user_email: "github-actions[bot]@users.noreply.github.com"
-          commit_author: "github-actions[bot] <github-actions[bot]@users.noreply.github.com>"
