@@ -22,7 +22,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-          cache: 'pip'
+          # 删掉了引起报错的 cache: 'pip'
 
       - name: 📦 安装必要依赖
         run: pip install requests urllib3
@@ -35,3 +35,5 @@ jobs:
         with:
           commit_message: "🔄 自动同步更新：ADG 规则列表"
           file_pattern: "my_adg_rules.txt"
+          push_options: '--force'
+          skip_fetch: true
