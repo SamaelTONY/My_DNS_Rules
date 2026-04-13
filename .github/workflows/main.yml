@@ -2,20 +2,17 @@
 name: 🔄 Update ADG Rules
 
 on:
-  # 定时执行：每天北京时间 04:00 (UTC 20:00)
   schedule:
-    - cron: '0 20 * * *'
-  
-  # 手动触发
+    - cron: '0 20 * * *'  # UTC 20:00 = 北京时间 04:00
   workflow_dispatch:
     inputs:
       verbose:
-        description: 'Enable verbose logging'
+        description: 'Verbose logging'
         required: false
         default: 'false'
         type: boolean
       dry_run:
-        description: 'Dry run (no commit)'
+        description: 'Dry run (no push)'
         required: false
         default: 'false'
         type: boolean
@@ -26,78 +23,54 @@ env:
 
 jobs:
   build:
-    name: 🛠️ Build & Update
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    
     permissions:
       contents: write
     
     steps:
-      # 1. 检出代码（关键：fetch-depth: 0 拉取完整历史）
-      - name: ⬇️ Checkout repository
+      - name: ⬇️ Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 1  # 浅克隆即可，反正要 force push
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      # 2. 设置 Python
-      - name: 🐍 Set up Python
+      - name: 🐍 Python Setup
         uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: 'pip'
 
-      # 3. 安装依赖
-      - name: 📦 Install dependencies
+      - name: 📦 Install deps
         run: |
-          python -m pip install --upgrade pip
-          if [ -f requirements.txt ]; then
-            pip install -r requirements.txt
-          else
-            pip install requests urllib3
-          fi
-        shell: bash
+          pip install -q requests urllib3
 
-      # 4. 运行规则处理脚本
-      - name: 🚀 Run rules processor
+      - name: 🚀 Run processor
         id: process
         run: |
-          # 构建参数
           ARGS="-o ${{ env.OUTPUT_FILE }}"
           [ "${{ github.event.inputs.verbose }}" = "true" ] && ARGS="$ARGS -v"
           [ "${{ github.event.inputs.dry_run }}" = "true" ] && ARGS="$ARGS --dry-run"
           
-          echo "Running: python process_rules.py $ARGS"
           python process_rules.py $ARGS
           
-          # 提取统计信息
           if [ -f "${{ env.OUTPUT_FILE }}" ]; then
-            RULE_COUNT=$(grep -c '^||' "${{ env.OUTPUT_FILE }}" 2>/dev/null || echo "0")
-            FILE_SIZE=$(wc -c < "${{ env.OUTPUT_FILE }}" | tr -d ' ')
-            echo "rule_count=$RULE_COUNT" >> $GITHUB_OUTPUT
-            echo "file_size=$FILE_SIZE" >> $GITHUB_OUTPUT
-            echo "✅ Generated: $RULE_COUNT rules, $((FILE_SIZE/1024)) KB"
+            CNT=$(grep -c '^||' "${{ env.OUTPUT_FILE }}" 2>/dev/null || echo 0)
+            SZ=$(wc -c < "${{ env.OUTPUT_FILE }}" | tr -d ' ')
+            echo "rule_count=$CNT" >> $GITHUB_OUTPUT
+            echo "file_size=$SZ" >> $GITHUB_OUTPUT
+            echo "✅ $CNT rules, $((SZ/1024)) KB"
           fi
         shell: bash
 
-      # 5. 验证输出文件
-      - name: 🔍 Verify output
+      - name: 🔍 Verify
         if: ${{ github.event.inputs.dry_run != 'true' }}
         run: |
-          FILE="${{ env.OUTPUT_FILE }}"
-          
-          [ -f "$FILE" ] || { echo "❌ File not found"; exit 1; }
-          [ -s "$FILE" ] || { echo "❌ File is empty"; exit 1; }
-          
-          RULE_COUNT=$(grep -c '^||' "$FILE" 2>/dev/null || echo "0")
-          [ "$RULE_COUNT" -gt 0 ] || { echo "❌ No valid rules"; exit 1; }
-          
-          echo "✅ Verification passed: $RULE_COUNT rules"
-        shell: bash
+          [ -s "${{ env.OUTPUT_FILE }}" ] || exit 1
+          [ $(grep -c '^||' "${{ env.OUTPUT_FILE }}" 2>/dev/null || echo 0) -gt 0 ] || exit 1
+          echo "✅ Verified"
 
-      # 6. 提交并推送（核心修复）
-      - name: 📤 Commit and push
+      - name: 📤 Force Push
         if: ${{ github.event.inputs.dry_run != 'true' }}
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
@@ -105,55 +78,23 @@ jobs:
           
           git add "${{ env.OUTPUT_FILE }}"
           
-          # 检查是否有变更
           if git diff --staged --quiet; then
-            echo "ℹ️  No changes to commit"
+            echo "ℹ️  No changes"
             exit 0
           fi
           
-          # 提交
-          RULE_COUNT="${{ steps.process.outputs.rule_count }}"
-          FILE_SIZE="${{ steps.process.outputs.file_size }}"
-          git commit -m "🔄 auto-update: ${{ env.OUTPUT_FILE }}
+          git commit -m "🔄 auto: ${{ env.OUTPUT_FILE }} | ${{ steps.process.outputs.rule_count }} rules"
           
-          Rules: $RULE_COUNT
-          Size: $((FILE_SIZE/1024)) KB
-          Build: ${GITHUB_RUN_ID}"
+          # 🔑 核心：强制推送，避免冲突
+          git push --force origin main
           
-          # 拉取远程变更并推送
-          echo "🔄 Syncing with remote..."
-          git pull --rebase origin main || {
-            echo "⚠️  Rebase failed, trying pull..."
-            git pull origin main || true
-          }
-          
-          echo "📤 Pushing..."
-          git push origin main
-          
-          echo "✅ Update completed successfully"
+          echo "✅ Done"
         shell: bash
 
-      # 7. 上传构建产物
       - name: 📦 Upload artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: adg-rules-${{ github.run_number }}
+          name: rules-${{ github.run_number }}
           path: ${{ env.OUTPUT_FILE }}
-          retention-days: 3
-          if-no-files-found: warn
-
-      # 8. 打印摘要
-      - name: 📊 Summary
-        run: |
-          echo ""
-          echo "╔══════════════════════════════════════╗"
-          echo "║   🎯 ADG Rules Update Complete       ║"
-          echo "╠══════════════════════════════════════╣"
-          echo "║  Workflow:   ${{ github.workflow }}"
-          echo "║  Trigger:    ${{ github.event_name }}"
-          echo "║  Run ID:     ${{ github.run_id }}"
-          echo "║  Output:     ${{ env.OUTPUT_FILE }}"
-          echo "║  Rules:      ${{ steps.process.outputs.rule_count || 'N/A' }}"
-          echo "║  Size:       $(( ${{ steps.process.outputs.file_size || 0 }} / 1024 )) KB"
-          echo "╚══════════════════════════════════════╝"
+          retention-days: 2
