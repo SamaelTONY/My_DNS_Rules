@@ -19,13 +19,13 @@ jobs:
     name: 🛠️ 规则加工处理
     runs-on: ubuntu-latest
     permissions:
-      contents: write # 必须赋予写权限
+      contents: write # 赋予写权限
     
     steps:
       - name: ⬇️ 拉取仓库代码
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # 拉取全部历史，防止 rebase 失败
+          fetch-depth: 0 # 获取完整历史以支持 rebase
 
       - name: 🐍 设置 Python 环境
         uses: actions/setup-python@v5
@@ -41,26 +41,32 @@ jobs:
       - name: 🚀 执行规则合并脚本
         id: process
         run: |
+          # 确保脚本存在
+          if [ ! -f "process_rules.py" ]; then
+            echo "❌ process_rules.py not found!"
+            exit 1
+          fi
+          
           ARGS="-o ${{ env.OUTPUT_FILE }}"
-          if [ "${{ github.event.inputs.verbose }}" = "true" ]; then ARGS="$ARGS -v"; fi
+          [ "${{ github.event.inputs.verbose }}" = "true" ] && ARGS="$ARGS -v"
           
           python process_rules.py $ARGS
           
-          # 提取统计信息供提交信息使用
+          # 提取统计信息
           COUNT=$(grep -c '^||' "${{ env.OUTPUT_FILE }}" || echo "0")
           echo "rule_count=$COUNT" >> $GITHUB_OUTPUT
         shell: bash
 
-      - name: 📤 提交并同步到仓库
+      - name: 📤 强制同步并推送
         run: |
           # 1. 配置 Git 身份
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
 
-          # 2. 关键：先拉取云端更新，防止版本冲突
+          # 2. 核心步骤：先拉取云端变动并变基，彻底解决 [rejected] 冲突
           git pull --rebase origin main
 
-          # 3. 检查是否有规则变动
+          # 3. 检查规则是否有实际变动
           if git diff --quiet "${{ env.OUTPUT_FILE }}"; then
             echo "ℹ️ 规则内容无变化，跳过提交"
             exit 0
@@ -68,12 +74,12 @@ jobs:
           
           # 4. 提交并推送
           git add "${{ env.OUTPUT_FILE }}"
-          git commit -m "🔄 自动更新规则: ${{ steps.process.outputs.rule_count }} 条"
+          git commit -m "🔄 自动更新规则: ${{ steps.process.outputs.rule_count }} 条 [Skip CI]"
           git push origin main
         shell: bash
 
-      - name: 📊 打印任务摘要
+      - name: 📊 任务摘要
         run: |
-          echo "✅ 任务完成！"
+          echo "✅ 规则加工厂运行成功！"
           echo "生成文件: ${{ env.OUTPUT_FILE }}"
-          echo "规则总数: ${{ steps.process.outputs.rule_count }}"
+          echo "最终规模: ${{ steps.process.outputs.rule_count }} 条"
