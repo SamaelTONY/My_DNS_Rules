@@ -1,100 +1,35 @@
-# .github/workflows/main.yml
-name: 🔄 Update ADG Rules
+name: Update Rules
 
 on:
   schedule:
-    - cron: '0 20 * * *'  # UTC 20:00 = 北京时间 04:00
+    - cron: '0 20 * * *'
   workflow_dispatch:
-    inputs:
-      verbose:
-        description: 'Verbose logging'
-        required: false
-        default: 'false'
-        type: boolean
-      dry_run:
-        description: 'Dry run (no push)'
-        required: false
-        default: 'false'
-        type: boolean
-
-env:
-  PYTHON_VERSION: '3.11'
-  OUTPUT_FILE: 'my_adg_rules.txt'
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
     permissions:
       contents: write
-    
     steps:
-      - name: ⬇️ Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 1  # 浅克隆即可，反正要 force push
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: 🐍 Python Setup
+      - uses: actions/checkout@v4
+      
+      - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: ${{ env.PYTHON_VERSION }}
-          cache: 'pip'
-
-      - name: 📦 Install deps
+          python-version: '3.11'
+      
+      - name: Install requests
+        run: pip install requests
+      
+      - name: Run script
+        run: python process_rules.py
+      
+      - name: Push with force
         run: |
-          pip install -q requests urllib3
-
-      - name: 🚀 Run processor
-        id: process
-        run: |
-          ARGS="-o ${{ env.OUTPUT_FILE }}"
-          [ "${{ github.event.inputs.verbose }}" = "true" ] && ARGS="$ARGS -v"
-          [ "${{ github.event.inputs.dry_run }}" = "true" ] && ARGS="$ARGS --dry-run"
-          
-          python process_rules.py $ARGS
-          
-          if [ -f "${{ env.OUTPUT_FILE }}" ]; then
-            CNT=$(grep -c '^||' "${{ env.OUTPUT_FILE }}" 2>/dev/null || echo 0)
-            SZ=$(wc -c < "${{ env.OUTPUT_FILE }}" | tr -d ' ')
-            echo "rule_count=$CNT" >> $GITHUB_OUTPUT
-            echo "file_size=$SZ" >> $GITHUB_OUTPUT
-            echo "✅ $CNT rules, $((SZ/1024)) KB"
-          fi
-        shell: bash
-
-      - name: 🔍 Verify
-        if: ${{ github.event.inputs.dry_run != 'true' }}
-        run: |
-          [ -s "${{ env.OUTPUT_FILE }}" ] || exit 1
-          [ $(grep -c '^||' "${{ env.OUTPUT_FILE }}" 2>/dev/null || echo 0) -gt 0 ] || exit 1
-          echo "✅ Verified"
-
-      - name: 📤 Force Push
-        if: ${{ github.event.inputs.dry_run != 'true' }}
-        run: |
-          git config --local user.email "github-actions[bot]@users.noreply.github.com"
-          git config --local user.name "github-actions[bot]"
-          
-          git add "${{ env.OUTPUT_FILE }}"
-          
-          if git diff --staged --quiet; then
-            echo "ℹ️  No changes"
-            exit 0
-          fi
-          
-          git commit -m "🔄 auto: ${{ env.OUTPUT_FILE }} | ${{ steps.process.outputs.rule_count }} rules"
-          
-          # 🔑 核心：强制推送，避免冲突
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+          git add my_adg_rules.txt
+          git commit -m "auto update" || echo "no changes"
+          echo "=== Executing force push ==="
           git push --force origin main
-          
-          echo "✅ Done"
-        shell: bash
-
-      - name: 📦 Upload artifact
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: rules-${{ github.run_number }}
-          path: ${{ env.OUTPUT_FILE }}
-          retention-days: 2
+          echo "=== Push complete ==="
