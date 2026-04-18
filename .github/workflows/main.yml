@@ -9,41 +9,63 @@ jobs:
   build:
     name: 🛠️ 规则加工处理
     runs-on: ubuntu-latest
-    timeout-minutes: 15  # ← 超时保护
+    timeout-minutes: 15
     permissions:
       contents: write 
     
     steps:
+      # 1. 拉取代码
       - name: ⬇️ 拉取仓库代码
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 0  # 获取完整历史，辅助 force push
 
+      # 2. 恢复缓存 (核心优化)
+      - name: 📦 恢复规则源缓存
+        uses: actions/cache@v4
+        with:
+          path: .rules_cache.json
+          # 缓存键：基于脚本内容哈希 + 运行ID（确保每次保存新缓存，恢复时找最新的）
+          key: rules-cache-${{ hashFiles('process_rules.py') }}-${{ github.run_id }}
+          # 恢复键：如果找不到精确匹配的 key，则匹配最近的缓存
+          restore-keys: |
+            rules-cache-${{ hashFiles('process_rules.py') }}-
+
+      # 3. 设置 Python
       - name: 🐍 设置 Python 环境
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
+      # 4. 安装依赖
       - name: 📦 安装依赖
-        run: pip install -q requests urllib3  # ← 静默安装
+        run: pip install -q requests urllib3
 
+      # 5. 执行脚本
       - name: 🚀 执行规则合并脚本
         run: python process_rules.py -o my_adg_rules.txt
 
+      # 6. 验证输出
       - name: 🔍 验证输出
         run: |
-          [ -s my_adg_rules.txt ] || { echo "❌ Empty file!"; exit 1; }
+          if [ ! -s my_adg_rules.txt ]; then
+            echo "❌ Empty file!"
+            exit 1
+          fi
           echo "✅ $(wc -l < my_adg_rules.txt) lines, $(du -h my_adg_rules.txt | cut -f1)"
 
+      # 7. 提交与推送
       - name: 📤 提交与推送
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
           commit_message: "🔄 auto: ADG rules update"
-          file_pattern: "my_adg_rules.txt"
+          # 🔑 关键：只提交规则文件，忽略 .rules_cache.json，防止污染 Git 历史
+          file_pattern: "my_adg_rules.txt" 
           push_options: '--force'
           skip_fetch: true
 
-      - name: 📦 上传产物（调试用）
+      # 8. 上传产物 (可选，保留 2 天方便下载)
+      - name: 📦 上传产物
         uses: actions/upload-artifact@v4
         with:
           name: rules-${{ github.run_number }}
