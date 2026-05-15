@@ -2,7 +2,7 @@ name: 🔄 Update ADG Rules
 
 on:
   schedule:
-    - cron: '0 20 * * *'  # 北京时间 04:00
+    - cron: '35 21 * * *'  # 北京时间 05:35
   workflow_dispatch:
 
 jobs:
