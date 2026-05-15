@@ -29,6 +29,7 @@ RULE_SOURCES = [
     "https://easylist.to/easylist/easyprivacy.txt",
     "https://raw.githubusercontent.com/Cats-Team/AdRules/main/dns.txt",
     "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/multi.txt",
+    "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/tif.medium.txt",
 ]
 
 # 输出配置
