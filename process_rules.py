@@ -35,7 +35,7 @@ RULE_SOURCES = [
 # 输出配置
 OUTPUT_FILE = "my_adg_rules.txt"
 OUTPUT_TITLE = "OEC Master Rules (Cloud Build)"
-MAX_OUTPUT_SIZE = 10 * 1024 * 1024  # 10MB 警告阈值
+MAX_OUTPUT_SIZE = 15 * 1024 * 1024  # 15MB 警告阈值
 
 # 请求配置
 REQUEST_TIMEOUT = 60
