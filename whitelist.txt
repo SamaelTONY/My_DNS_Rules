@@ -1,1 +1,5 @@
 ||ecare365.com^
+||dns.weixin.qq.com.cn^
+||szlong.weixin.qq.com^
+||amdc.alipay.com^
+||ws-keyboard.shouji.sogou.com^
