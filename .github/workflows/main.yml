@@ -4,6 +4,11 @@ on:
   schedule:
     - cron: '35 21 * * *'  # 北京时间 05:35
   workflow_dispatch:
+    inputs:
+      force_accept:
+        description: '强制接受本次变动（绕过熔断器，仅用于故意换源等大调整）'
+        type: boolean
+        default: false
 
 # 🔑 防止并发运行导致冲突
 concurrency:
@@ -23,7 +28,7 @@ jobs:
       - name: ⬇️ 拉取仓库代码
         uses: actions/checkout@v4
         with:
-          fetch-depth: 1  # 只需要最新提交即可
+          fetch-depth: 1
 
       # 2. 设置 Python
       - name: 🐍 设置 Python 环境
@@ -51,20 +56,24 @@ jobs:
       # 🔑 6. 规则数量熔断 (防上游投毒/大面积故障)
       - name: 🛡️ 规则数量熔断检查
         run: |
+          # 手动触发且勾选了 force_accept 时，跳过熔断（用于故意换源）
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.force_accept }}" = "true" ]; then
+            echo "⚠️ 已手动强制接受，本次跳过熔断检查"
+            exit 0
+          fi
+
           NEW_COUNT=$(grep -c '^||\|^@@' my_adg_rules.txt || echo 0)
-          # 尝试获取仓库中上一版的行数，如果是首次运行则设为 0
           OLD_COUNT=$(git show HEAD:my_adg_rules.txt 2>/dev/null | grep -c '^||\|^@@' || echo 0)
           
           echo "📊 旧规则数: $OLD_COUNT, 新规则数: $NEW_COUNT"
           
           if [ "$OLD_COUNT" -gt 0 ]; then
-            # 计算变动百分比 (绝对值)
             DELTA=$(( (NEW_COUNT - OLD_COUNT) * 100 / OLD_COUNT ))
             DELTA=${DELTA#-} 
-            
             echo "📈 变动幅度: ${DELTA}%"
             if [ "$DELTA" -gt 30 ]; then 
-              echo "❌ 规则变动超过 30%，触发安全熔断，停止提交！" 
+              echo "❌ 规则变动超过 30%，触发安全熔断，停止提交！"
+              echo "💡 若此变动是预期的（如故意换源），请在 Actions 页面手动运行并勾选 force_accept"
               exit 1
             fi
           else
