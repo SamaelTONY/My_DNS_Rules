@@ -5,6 +5,11 @@ on:
     - cron: '35 21 * * *'  # 北京时间 05:35
   workflow_dispatch:
 
+# 🔑 防止并发运行导致冲突
+concurrency:
+  group: rules-update
+  cancel-in-progress: true
+
 jobs:
   build:
     name: 🛠️ 规则加工处理
@@ -18,34 +23,23 @@ jobs:
       - name: ⬇️ 拉取仓库代码
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # 获取完整历史，辅助 force push
+          fetch-depth: 1  # 只需要最新提交即可
 
-      # 2. 恢复缓存 (核心优化)
-      - name: 📦 恢复规则源缓存
-        uses: actions/cache@v4
-        with:
-          path: .rules_cache.json
-          # 缓存键：基于脚本内容哈希 + 运行ID（确保每次保存新缓存，恢复时找最新的）
-          key: rules-cache-${{ hashFiles('process_rules.py') }}-${{ github.run_id }}
-          # 恢复键：如果找不到精确匹配的 key，则匹配最近的缓存
-          restore-keys: |
-            rules-cache-${{ hashFiles('process_rules.py') }}-
-
-      # 3. 设置 Python
+      # 2. 设置 Python
       - name: 🐍 设置 Python 环境
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      # 4. 安装依赖
+      # 3. 安装依赖
       - name: 📦 安装依赖
         run: pip install -q requests urllib3
 
-      # 5. 执行脚本
+      # 4. 执行脚本
       - name: 🚀 执行规则合并脚本
         run: python process_rules.py -o my_adg_rules.txt
 
-      # 6. 验证输出
+      # 5. 验证输出
       - name: 🔍 验证输出
         run: |
           if [ ! -s my_adg_rules.txt ]; then
@@ -54,14 +48,35 @@ jobs:
           fi
           echo "✅ $(wc -l < my_adg_rules.txt) lines, $(du -h my_adg_rules.txt | cut -f1)"
 
+      # 🔑 6. 规则数量熔断 (防上游投毒/大面积故障)
+      - name: 🛡️ 规则数量熔断检查
+        run: |
+          NEW_COUNT=$(grep -c '^||\|^@@' my_adg_rules.txt || echo 0)
+          # 尝试获取仓库中上一版的行数，如果是首次运行则设为 0
+          OLD_COUNT=$(git show HEAD:my_adg_rules.txt 2>/dev/null | grep -c '^||\|^@@' || echo 0)
+          
+          echo "📊 旧规则数: $OLD_COUNT, 新规则数: $NEW_COUNT"
+          
+          if [ "$OLD_COUNT" -gt 0 ]; then
+            # 计算变动百分比 (绝对值)
+            DELTA=$(( (NEW_COUNT - OLD_COUNT) * 100 / OLD_COUNT ))
+            DELTA=${DELTA#-} 
+            
+            echo "📈 变动幅度: ${DELTA}%"
+            if [ "$DELTA" -gt 30 ]; then 
+              echo "❌ 规则变动超过 30%，触发安全熔断，停止提交！" 
+              exit 1
+            fi
+          else
+            echo "ℹ️ 首次生成或无法对比旧文件，跳过熔断检查。"
+          fi
+
       # 7. 提交与推送
       - name: 📤 提交与推送
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: "🔄 auto: ADG rules update"
-          # 🔑 关键：只提交规则文件，忽略 .rules_cache.json，防止污染 Git 历史
+          commit_message: "🔄 auto: ADG rules update (Pro/AdRules/Privacy)"
           file_pattern: "my_adg_rules.txt" 
-          push_options: '--force'
           skip_fetch: true
 
       # 8. 上传产物 (可选，保留 2 天方便下载)
