@@ -1,17 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-ADG Home Rules Aggregator v5.0 (Pro/AdRules/TIF Edition)
-整合多源广告规则，智能去重后输出 AdGuard Home 格式规则文件
-针对 GitHub Actions 环境优化：移除脆弱缓存、修复白名单 @@ 例外、强化去重
-
-v5.0 变更 (2026-09):
-  - 移除 EasyPrivacy（DNS 层误杀率高，隐私拦截已由 Pro 覆盖）
-  - 新增 HaGeZi TIF Medium（恶意软件/钓鱼/威胁情报防护）
-  - 下载统计新增 skipped 计数，便于观察各源被过滤的非 DNS 规则
-
-Author: SamaelTONY
-Date: 2026
+ADG Home Rules Aggregator v5.1 (Pro/AdRules/TIF Mini Edition)
 """
 
 import os
@@ -21,67 +11,45 @@ import logging
 import argparse
 from datetime import datetime, timezone
 from urllib.parse import urlparse
-from collections import defaultdict
 
 import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
 # ==================== 🔧 配置区域 ====================
-# 规则源列表 - 2026 稳健组合 (Pro + AdRules + TIF Mini)
 RULE_SOURCES = [
-    # 国际广告/追踪/遥测拦截（平衡型主力）
     "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/pro.txt",
-    # 国内广告/流氓软件拦截（国内环境主力）
     "https://raw.githubusercontent.com/Cats-Team/AdRules/main/dns.txt",
-    # 恶意软件/钓鱼/矿池/C2 防护（高置信度精华版，低误杀）
     "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/tif.mini.txt",
 ]
 
-# 输出配置
 OUTPUT_FILE = "my_adg_rules.txt"
-OUTPUT_TITLE = "OEC Master Rules (Pro/AdRules/TIF Build)"
-MAX_OUTPUT_SIZE = 15 * 1024 * 1024  # 15MB 警告阈值
+OUTPUT_TITLE = "OEC Master Rules (Pro/AdRules/TIF Mini Build)"
+MAX_OUTPUT_SIZE = 15 * 1024 * 1024
 
-# 请求配置
 REQUEST_TIMEOUT = 60
 REQUEST_RETRIES = 3
-REQUEST_USER_AGENT = "ADG-Rules-Aggregator/5.0 (+https://github.com/SamaelTONY/My_DNS_Rules)"
+REQUEST_USER_AGENT = "ADG-Rules-Aggregator/5.1 (+https://github.com/SamaelTONY/My_DNS_Rules)"
 
-# 规则过滤配置
 RULE_PREFIX = "||"
 RULE_SUFFIX = "^"
 MIN_DOMAIN_LENGTH = 4
 
-# 本地文件（可选）
 CUSTOM_RULES_FILE = "custom_rules.txt"
 WHITELIST_FILE = "whitelist.txt"
 
-# 日志配置
 LOG_LEVEL = logging.INFO
 LOG_FORMAT = "%(asctime)s [%(levelname)s] %(message)s"
 # ==================== 配置结束 ====================
 
 
 def setup_logging():
-    """初始化日志配置"""
-    logging.basicConfig(
-        level=LOG_LEVEL,
-        format=LOG_FORMAT,
-        datefmt="%H:%M:%S",
-        stream=sys.stdout
-    )
+    logging.basicConfig(level=LOG_LEVEL, format=LOG_FORMAT, datefmt="%H:%M:%S", stream=sys.stdout)
 
 
 def get_requests_session():
-    """创建带重试机制的 requests session"""
     session = requests.Session()
-    retry_strategy = Retry(
-        total=REQUEST_RETRIES,
-        backoff_factor=0.5,
-        status_forcelist=[429, 500, 502, 503, 504],
-        allowed_methods=["GET", "HEAD"]
-    )
+    retry_strategy = Retry(total=REQUEST_RETRIES, backoff_factor=0.5, status_forcelist=[429, 500, 502, 503, 504], allowed_methods=["GET", "HEAD"])
     adapter = HTTPAdapter(max_retries=retry_strategy)
     session.mount("https://", adapter)
     session.mount("http://", adapter)
@@ -90,7 +58,6 @@ def get_requests_session():
 
 
 def extract_domain_from_rule(rule: str) -> str:
-    """从 AdGuard 规则中提取纯域名"""
     domain = rule.strip()
     if domain.startswith(RULE_PREFIX):
         domain = domain[len(RULE_PREFIX):]
@@ -100,7 +67,6 @@ def extract_domain_from_rule(rule: str) -> str:
 
 
 def is_valid_rule(rule: str) -> bool:
-    """验证规则格式是否有效（仅接受 ||domain^ 标准格式）"""
     if not rule.startswith(RULE_PREFIX) or not rule.endswith(RULE_SUFFIX):
         return False
     domain = extract_domain_from_rule(rule)
@@ -113,11 +79,6 @@ def is_valid_rule(rule: str) -> bool:
 
 
 def is_valid_whitelist_domain(domain: str) -> bool:
-    """
-    🔒 白名单域名合法性校验
-    ✅ 必须至少两级域名 (example.com, qq.com)
-    ❌ 拒绝纯顶级域名 (com, cn, io)
-    """
     if not domain or "." not in domain:
         return False
     parts = domain.split(".")
@@ -127,7 +88,6 @@ def is_valid_whitelist_domain(domain: str) -> bool:
 
 
 def load_local_rules(filepath: str, is_whitelist: bool = False) -> set:
-    """加载本地规则文件（支持白名单安全校验）"""
     rules = set()
     if not os.path.exists(filepath):
         return rules
@@ -149,75 +109,173 @@ def load_local_rules(filepath: str, is_whitelist: bool = False) -> set:
 
 
 def download_rules_with_stats(sources: list, session: requests.Session) -> tuple:
-    """
-    下载并解析远程规则（纯净全量下载，移除脆弱的 304 缓存逻辑）
-    返回: (raw_rules_set, source_stats_dict)
-    """
     raw_rules = set()
     source_stats = {}
-
     logging.info(f"Step 1: Downloading rules from {len(sources)} sources...")
-
+    
     for idx, url in enumerate(sources, 1):
         try:
             source_name = urlparse(url).path.split('/')[-1]
             logging.info(f"  [{idx}/{len(sources)}] Checking: {source_name}...")
-
-            # 纯净的全量下载
             response = session.get(url, timeout=REQUEST_TIMEOUT)
             response.raise_for_status()
-
-            # v5.0: 统计被过滤的非标准规则（正则/修饰符规则，DNS 层无法生效）
+            
             lines = [line.strip() for line in response.text.splitlines() if line.strip()]
             rules_from_source = {line for line in lines if is_valid_rule(line)}
             skipped_count = len(lines) - len(rules_from_source)
             downloaded_count = len(rules_from_source)
-            logging.info(f"    ✓ Downloaded {downloaded_count:,} valid DNS rules "
-                         f"(skipped {skipped_count:,} non-standard/regex rules)")
-
-            # 计算本批次唯一规则数
+            logging.info(f"    ✓ Downloaded {downloaded_count:,} valid DNS rules (skipped {skipped_count:,} non-standard)")
+            
             unique_count = len([r for r in rules_from_source if r not in raw_rules])
             raw_rules.update(rules_from_source)
-
-            source_stats[url] = {
-                'downloaded': downloaded_count,
-                'unique': unique_count,
-                'skipped': skipped_count
-            }
+            source_stats[url] = {'downloaded': downloaded_count, 'unique': unique_count, 'skipped': skipped_count}
             logging.info(f"    → {unique_count:,} new rules added")
-
         except Exception as e:
             logging.error(f"    ✗ Failed to download {url}: {e}")
             source_stats[url] = {'downloaded': 0, 'unique': 0, 'skipped': 0}
-
+            
     logging.info(f"Total raw rules collected: {len(raw_rules):,}")
     return raw_rules, source_stats
 
 
 def optimize_rules(raw_rules: set) -> list:
-    """
-    智能去重优化：
-    1. 按域名长度升序排序（短域名优先覆盖）
-    2. 若某域名已被父域名覆盖，则跳过
-    """
     logging.info(f"Step 2: Optimizing rules (original: {len(raw_rules):,})...")
-
     sorted_rules = sorted(raw_rules, key=lambda r: len(extract_domain_from_rule(r)))
     optimized = []
     covered_domains = set()
-
+    
     for rule in sorted_rules:
         domain = extract_domain_from_rule(rule)
         is_covered = False
-
-        # 检查所有可能的父域名
         parts = domain.split(".")
         for i in range(1, len(parts)):
             parent = ".".join(parts[i:])
             if parent in covered_domains:
                 is_covered = True
-                logging.debug(f"  Skip covered: {domain} (by {parent})")
                 break
-
         if not is_covered:
-           
+            optimized.append(rule)
+            covered_domains.add(domain)
+            
+    removed = len(raw_rules) - len(optimized)
+    rate = (removed / len(raw_rules) * 100) if raw_rules else 0
+    logging.info(f"Optimized: {len(optimized):,} rules (removed {removed:,}, {rate:.1f}% reduction)")
+    return optimized
+
+
+def is_whitelisted(domain: str, whitelist_domains: set) -> bool:
+    if domain in whitelist_domains:
+        return True
+    parts = domain.split(".")
+    for i in range(1, len(parts)):
+        if ".".join(parts[i:]) in whitelist_domains:
+            return True
+    return False
+
+
+def merge_custom_rules(rules: list) -> tuple:
+    custom_rules = load_local_rules(CUSTOM_RULES_FILE)
+    if custom_rules:
+        rule_set = set(rules)
+        rule_set.update(custom_rules)
+        rules = sorted(rule_set, key=lambda r: len(extract_domain_from_rule(r)))
+        logging.info(f"Merged {len(custom_rules)} custom rules")
+        
+    whitelist = load_local_rules(WHITELIST_FILE, is_whitelist=True)
+    whitelist_domains = set()
+    if whitelist:
+        whitelist_domains = {extract_domain_from_rule(r) for r in whitelist}
+        original_count = len(rules)
+        rules = [r for r in rules if not is_whitelisted(extract_domain_from_rule(r), whitelist_domains)]
+        removed = original_count - len(rules)
+        if removed > 0:
+            logging.info(f"Whitelisted {removed} rules (including subdomains)")
+    return rules, whitelist_domains
+
+
+def generate_output(rules: list, whitelist_domains: set, output_path: str):
+    logging.info(f"Step 3: Writing output to {output_path}...")
+    exception_rules = []
+    if whitelist_domains:
+        exception_rules = [f"@@||{d}^" for d in sorted(whitelist_domains)]
+        logging.info(f"Added {len(exception_rules)} whitelist exceptions (@@)")
+
+    final_content_list = rules + exception_rules
+    rules_content = "\n".join(final_content_list)
+    checksum_md5 = hashlib.md5(rules_content.encode("utf-8")).hexdigest()[:16]
+    checksum_sha1 = hashlib.sha1(rules_content.encode("utf-8")).hexdigest()[:20]
+    estimated_size = len(rules_content.encode("utf-8"))
+    
+    if estimated_size > MAX_OUTPUT_SIZE:
+        logging.warning(f"⚠️ Output size ({estimated_size/1024/1024:.2f}MB) exceeds limit!")
+        
+    with open(output_path, "w", encoding="utf-8") as f:
+        f.write(f"! Title: {OUTPUT_TITLE}\n")
+        f.write(f"! Version: {datetime.now(timezone.utc).strftime('%Y%m%d%H%M')}\n")
+        f.write(f"! Last-Modified: {datetime.now(timezone.utc).strftime('%a, %d %b %Y %H:%M:%S GMT')}\n")
+        f.write(f"! Total Rules: {len(final_content_list)}\n")
+        f.write(f"! Checksum-MD5: {checksum_md5}\n")
+        f.write(f"! Checksum-SHA1: {checksum_sha1}\n")
+        f.write(f"! Size-Estimated: {estimated_size / 1024:.1f} KB\n")
+        f.write("! Source: https://github.com/SamaelTONY/My_DNS_Rules\n\n")
+        f.write(rules_content)
+    logging.info(f"✓ Output saved: {len(final_content_list):,} total rules, {estimated_size/1024:.1f} KB")
+
+
+def print_summary(rules: list, sources: list, source_stats: dict):
+    print("\n" + "=" * 60)
+    print("📊 RULES AGGREGATION SUMMARY")
+    print("=" * 60)
+    print(f"Sources processed : {len(sources)}")
+    print(f"Final rule count  : {len(rules):,}")
+    print(f"Output file       : {OUTPUT_FILE}")
+    if source_stats:
+        print("\n📈 Source Contribution:")
+        print("-" * 60)
+        for url, stats in source_stats.items():
+            name = urlparse(url).path.split('/')[-1]
+            print(f"  {name:22} {stats['downloaded']:8,} rules ({stats['unique']:,} unique, {stats.get('skipped', 0):,} skipped)")
+        print("-" * 60)
+    print("=" * 60 + "\n")
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="ADG Home Rules Aggregator v5.1")
+    parser.add_argument("-o", "--output", type=str, default=OUTPUT_FILE, help="Output file path")
+    parser.add_argument("-s", "--sources", type=str, nargs="+", help="Override rule source URLs")
+    parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose logging")
+    parser.add_argument("--dry-run", action="store_true", help="Process but don't write file")
+    return parser.parse_args()
+
+
+def main():
+    args = parse_args()
+    setup_logging()
+    if args.verbose:
+        logging.getLogger().setLevel(logging.DEBUG)
+    output_file = args.output
+    sources = args.sources if args.sources else RULE_SOURCES
+    logging.info("🚀 ADG Rules Aggregator v5.1 started")
+    try:
+        session = get_requests_session()
+        raw_rules, source_stats = download_rules_with_stats(sources, session)
+        if not raw_rules:
+            logging.error("No rules collected! Check sources or network.")
+            sys.exit(1)
+        optimized_rules = optimize_rules(raw_rules)
+        final_rules, whitelist_domains = merge_custom_rules(optimized_rules)
+        if not args.dry_run:
+            generate_output(final_rules, whitelist_domains, output_file)
+            print_summary(final_rules, sources, source_stats)
+        else:
+            print_summary(final_rules, sources, source_stats)
+        logging.info("✅ All done!")
+        return 0
+    except KeyboardInterrupt:
+        return 130
+    except Exception as e:
+        logging.exception(f"❌ Fatal error: {e}")
+        return 1
+
+if __name__ == "__main__":
+    sys.exit(main())
