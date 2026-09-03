@@ -28,14 +28,14 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
 # ==================== 🔧 配置区域 ====================
-# 规则源列表 - 2026 稳健组合 (Pro + AdRules + TIF)
+# 规则源列表 - 2026 稳健组合 (Pro + AdRules + TIF Mini)
 RULE_SOURCES = [
     # 国际广告/追踪/遥测拦截（平衡型主力）
     "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/pro.txt",
     # 国内广告/流氓软件拦截（国内环境主力）
     "https://raw.githubusercontent.com/Cats-Team/AdRules/main/dns.txt",
-    # 恶意软件/钓鱼/矿池/C2 防护（安全补充，标准版）
-    "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/tif.txt",
+    # 恶意软件/钓鱼/矿池/C2 防护（高置信度精华版，低误杀）
+    "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/tif.mini.txt",
 ]
 
 # 输出配置
