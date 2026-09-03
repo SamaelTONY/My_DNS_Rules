@@ -19,10 +19,10 @@ jobs:
   build:
     name: 🛠️ 规则加工处理
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20   # TIF 源较大，留足余量
     permissions:
-      contents: write 
-    
+      contents: write
+
     steps:
       # 1. 拉取代码
       - name: ⬇️ 拉取仓库代码
@@ -54,9 +54,10 @@ jobs:
           echo "✅ $(wc -l < my_adg_rules.txt) lines, $(du -h my_adg_rules.txt | cut -f1)"
 
       # 🔑 6. 规则数量熔断 (防上游投毒/大面积故障)
+      # ⚠️ 注意：本次换源（-EasyPrivacy +TIF Medium）首次运行变动必然超 30%，
+      #    请在 Actions 页面手动触发并勾选 force_accept，之后恢复自动熔断保护。
       - name: 🛡️ 规则数量熔断检查
         run: |
-          # 手动触发且勾选了 force_accept 时，跳过熔断（用于故意换源）
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.force_accept }}" = "true" ]; then
             echo "⚠️ 已手动强制接受，本次跳过熔断检查"
             exit 0
@@ -64,14 +65,14 @@ jobs:
 
           NEW_COUNT=$(grep -c '^||\|^@@' my_adg_rules.txt || echo 0)
           OLD_COUNT=$(git show HEAD:my_adg_rules.txt 2>/dev/null | grep -c '^||\|^@@' || echo 0)
-          
+
           echo "📊 旧规则数: $OLD_COUNT, 新规则数: $NEW_COUNT"
-          
+
           if [ "$OLD_COUNT" -gt 0 ]; then
             DELTA=$(( (NEW_COUNT - OLD_COUNT) * 100 / OLD_COUNT ))
-            DELTA=${DELTA#-} 
+            DELTA=${DELTA#-}
             echo "📈 变动幅度: ${DELTA}%"
-            if [ "$DELTA" -gt 30 ]; then 
+            if [ "$DELTA" -gt 30 ]; then
               echo "❌ 规则变动超过 30%，触发安全熔断，停止提交！"
               echo "💡 若此变动是预期的（如故意换源），请在 Actions 页面手动运行并勾选 force_accept"
               exit 1
@@ -84,8 +85,8 @@ jobs:
       - name: 📤 提交与推送
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: "🔄 auto: ADG rules update (Pro/AdRules/Privacy)"
-          file_pattern: "my_adg_rules.txt" 
+          commit_message: "🔄 auto: ADG rules update (Pro/AdRules/TIF)"
+          file_pattern: "my_adg_rules.txt"
           skip_fetch: true
 
       # 8. 上传产物 (可选，保留 2 天方便下载)
