@@ -1,5 +1,22 @@
+# ================================================
+# 白名单（格式：||domain^，父域名会放行其全部子域名）
+# 隐私优先原则：尽量用精确子域名，避免整域放行
+# ================================================
+
+# ----- 历史误杀修复（已验证，保留） -----
 ||ecare365.com^
 ||dns.weixin.qq.com.cn^
 ||szlong.weixin.qq.com^
 ||amdc.alipay.com^
 ||ws-keyboard.shouji.sogou.com^
+
+# ----- 国内高频误杀预防（可选，不需要的可删） -----
+# 微信：小程序/长连接
+||minorshort.weixin.qq.com^
+||szextshort.weixin.qq.com^
+# 淘宝：登录风控/滑动验证（fourier 为风控域，放行换稳定）
+||acs.m.taobao.com^
+||fourier.taobao.com^
+# 哔哩哔哩：弹幕/CDN
+||biliapi.net^
+||hdslb.com^
