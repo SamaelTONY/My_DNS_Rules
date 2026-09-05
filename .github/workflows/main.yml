@@ -19,9 +19,6 @@ jobs:
     name: 🛠️ 规则加工处理
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    # 主动提前切入 Node 24 运行时（Node 20 将于 2026-09-16 从 Runner 移除）
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     permissions:
       contents: write 
     
