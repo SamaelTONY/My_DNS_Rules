@@ -3,13 +3,13 @@
 [![Update ADG Rules](https://github.com/SamaelTONY/My_DNS_Rules/actions/workflows/main.yml/badge.svg)](https://github.com/SamaelTONY/My_DNS_Rules/actions/workflows/main.yml)
 
 > 一条订阅链接 = 三大优质上游 + 智能去重优化 + 白名单保护 + 每日自动更新 + 熔断防暴。
-> 产出物 `my_adg_rules.txt` 直供 AdGuard Home，服务 OEC 家庭网络净化体系。
+> 产出物 `my_adg_rules.txt` 可被任意 AdGuard Home / AdGuard 实例直接订阅。
 
 ---
 
 ## 📖 项目简介
 
-本仓库是一座 **DNS 广告/追踪过滤规则的“加工厂”**：每天自动拉取三个高质量上游规则集，经 `process_rules.py` 清洗、去重、优化、白名单豁免后，生成单个 AdGuard Home 可直接订阅的过滤文件 `my_adg_rules.txt`，并由 GitHub Actions 机器人自动提交发布。
+本仓库是一座 **DNS 广告/追踪过滤规则的“加工厂”**：每天自动拉取三个高质量上游规则集，经 `process_rules.py` 清洗、去重、优化、白名单豁免后，生成单个 AdGuard 系产品可直接订阅的过滤文件 `my_adg_rules.txt`，并由 GitHub Actions 机器人自动提交发布。
 
 设计哲学：
 
@@ -24,9 +24,9 @@ My_DNS_Rules/
 ├── .github/
 │   └── workflows/
 │       └── main.yml          # GitHub Actions 自动化产线（每日构建 + 熔断 + 自动提交）
-├── my_adg_rules.txt          # 📦 产出物（约 46.7 万条 / 约 10MB），AdGuard Home 订阅
+├── my_adg_rules.txt          # 📦 产出物（约 46.7 万条 / 约 10MB）
 ├── process_rules.py          # 🧠 规则加工引擎 v5.1
-├── whitelist.txt             # 🛡 白名单（永不拦截清单，11 个域名）
+├── whitelist.txt             # 🛡 白名单（永不拦截清单）
 └── README.md                 # 本文件
 ```
 
@@ -37,7 +37,7 @@ My_DNS_Rules/
 ```
 HaGeZi Pro ────────┐
                    │
-AdRules dns.txt ───┼──▶ process_rules.py ──▶ my_adg_rules.txt ──▶ AdGuard Home（OEC 旁路由）
+AdRules dns.txt ───┼──▶ process_rules.py ──▶ my_adg_rules.txt ──▶ AdGuard Home / AdGuard
                    │     · 格式校验          │  · ||domain^ 拦截规则
 HaGeZi TIF Mini ───┘     · 全局去重          │  · @@||domain^ 白名单例外
                          · 父域覆盖优化      │  · 版本/校验和元数据
@@ -46,20 +46,20 @@ HaGeZi TIF Mini ───┘     · 全局去重          │  · @@||domain^ �
 
 ## 📥 规则来源
 
-| 上游 | 路径 | 定位 | 贡献量（#165 构建） |
+| 上游 | 路径 | 定位 | 贡献量（示例构建） |
 |---|---|---|---|
-| **HaGeZi Pro** | `hagezi/dns-blocklists/adblock/pro.txt` | 广告/追踪拦截主力 | 226,420 |
-| **Cats-Team AdRules** | `Cats-Team/AdRules/dns.txt` | 国内生态与新兴规则补强 | 117,217（独有） |
-| **HaGeZi TIF Mini** | `hagezi/dns-blocklists/adblock/tif.mini.txt` | 追踪/注入/遥测拦截 | 133,824（独有） |
+| **HaGeZi Pro** | `hagezi/dns-blocklists/adblock/pro.txt` | 广告/追踪拦截主力 | ~226k |
+| **Cats-Team AdRules** | `Cats-Team/AdRules/dns.txt` | 国内生态与新兴规则补强 | ~117k（独有） |
+| **HaGeZi TIF Mini** | `hagezi/dns-blocklists/adblock/tif.mini.txt` | 追踪/注入/遥测拦截 | ~134k（独有） |
 
 ## 🧠 加工引擎（process_rules.py v5.1）
 
 ### 1. 格式校验
-仅接受标准 AdBlock 语法 `||domain^`；跳过非标准行（每次构建约 60 余行）；域名必须含点、长度 ≥ 4、无空段或连字符首尾段。
+仅接受标准 AdBlock 语法 `||domain^`；跳过非标准行；域名必须含点、长度 ≥ 4、无空段或连字符首尾段。
 
 ### 2. 去重与优化
 - 三源全局去重（原始约 47.7 万条）；
-- **父域覆盖优化**：父域已保留则删除子域规则（每次构建约移除 9.7k 冗余、压缩 ~2%），体积更小、覆盖不减。
+- **父域覆盖优化**：父域已保留则删除子域规则（每次构建约移除 9~10k 冗余、压缩 ~2%），体积更小、覆盖不减。
 
 ### 3. 白名单机制（核心保护）
 - 载入 `whitelist.txt`（`||domain^` 格式，父域名自动覆盖其全部子域名）；
@@ -67,7 +67,7 @@ HaGeZi TIF Mini ───┘     · 全局去重          │  · @@||domain^ �
 - **双保险**：同时在文件尾部追加 `@@||domain^` 例外规则，即使上游未来新增规则也能确保豁免。
 
 ### 4. 产出元数据
-文件头部包含机器可读元数据，供下游监控消费（见「OEC 生态联动」）：
+文件头部包含机器可读元数据，便于下游做新鲜度校验与问题追溯：
 
 ```
 ! Title: OEC Master Rules (Pro/AdRules/TIF Mini Build)
@@ -94,7 +94,7 @@ python process_rules.py -s <url1> <url2>      # 临时覆盖上游源
 | 项 | 配置 |
 |---|---|
 | 触发 | 每日 **北京时间 05:35**（UTC 21:35）+ 手动 `workflow_dispatch` |
-| 运行时 | ubuntu-latest · Python 3.11 · **Node 24 原生 Actions** |
+| 运行时 | ubuntu-latest · Python 3.11 · Node 24 原生 Actions |
 | 并发 | `rules-update` 组，重叠运行自动取消 |
 | 超时 | 20 分钟 |
 | 提交 | `github-actions[bot]` 仅自动提交 `my_adg_rules.txt` |
@@ -108,24 +108,13 @@ python process_rules.py -s <url1> <url2>      # 临时覆盖上游源
 
 ## 🛡 白名单哲学
 
-`whitelist.txt` 现含 11 条，分两类：
+白名单与仓库内 `whitelist.txt` 同步，按“豁免类别”组织，例如：
 
-**历史误杀修复（已实机验证）**
-
-| 域名 | 用途 |
-|---|---|
-| `ecare365.com` | 历史误杀修复的业务域名 |
-| `dns.weixin.qq.com.cn` / `szlong.weixin.qq.com` | 微信长连接 / 小程序 |
-| `amdc.alipay.com` | 支付宝调度服务 |
-| `ws-keyboard.shouji.sogou.com` | 搜狗输入法云服务 |
-
-**国内高频误杀预防**
-
-| 域名 | 用途 |
-|---|---|
-| `minorshort.weixin.qq.com` / `szextshort.weixin.qq.com` | 微信短链通道 |
-| `acs.m.taobao.com` / `fourier.taobao.com` | 淘宝登录风控 / 滑动验证 |
-| `biliapi.net` / `hdslb.com` | 哔哩哔哩 API / CDN |
+| 类别 | 示例域名 | 说明 |
+|---|---|---|
+| 即时通讯 / 支付 | `dns.weixin.qq.com.cn`、`szlong.weixin.qq.com`、`minorshort.weixin.qq.com`、`amdc.alipay.com` | 微信长连接 / 小程序 / 支付宝调度 |
+| 国内常用服务 | `acs.m.taobao.com`、`fourier.taobao.com`、`biliapi.net`、`hdslb.com` | 淘宝 API 与风控 / 哔哩哔哩 API 与 CDN |
+| 输入法 / 其他 | `ws-keyboard.shouji.sogou.com`、`ecare365.com` | 输入法云服务 / 历史易误杀域名 |
 
 **原则**：尽量精确子域名、谨慎整域放行（隐私优先）；误杀须经实机验证后才加入。
 
@@ -137,15 +126,13 @@ python process_rules.py -s <url1> <url2>      # 临时覆盖上游源
 https://raw.githubusercontent.com/SamaelTONY/My_DNS_Rules/main/my_adg_rules.txt
 ```
 
-建议更新间隔：**24 小时**（与每日 05:35 构建对齐）。
+建议更新间隔：**24 小时**（与每日构建对齐）。规则为标准 AdBlock 语法，亦兼容 uBlock Origin 等支持该语法的产品。
 
-## 🧩 OEC 生态联动
+## 🧩 下游消费示例
 
-本仓库是 OEC 家庭网络体系的**“量产规则层”**：
-
-- **下游消费**：OEC（iStoreOS 旁路由）AdGuard Home 订阅本仓库产出物；
-- **特例补丁层**：OEC 本地「系统大脑」规则清单负责 `$important` 特例补丁（YouTube 链路、连通性检测等），与本库分工协作；
-- **产线监控**：OEC 健康哨兵每日读取 `! Version:` 时间戳，**产出物超过 72 小时未更新即告警**，杜绝“产线静默停摆”。
+- 任何 AdGuard Home / AdGuard 实例均可将本仓库产物作为**主过滤规则**使用；
+- 作者自身亦以它作为基础规则层，配合一份**本地特例补丁清单**分层协作（特例层不公开，按各自需求定制）；
+- 产出物头部的 `! Version:` 时间戳可供下游自行实现“新鲜度监控”，及时发现产线停摆。
 
 ## 🛠 手动运维指南
 
@@ -157,7 +144,7 @@ https://raw.githubusercontent.com/SamaelTONY/My_DNS_Rules/main/my_adg_rules.txt
 | 回滚规则 | 提交历史中定位日期 commit，Revert `my_adg_rules.txt` |
 | 本地调试 | `pip install requests urllib3 && python process_rules.py --dry-run -v` |
 
-## 📊 构建数据快照（#165 · 2026-09-05）
+## 📊 构建数据快照（2026-09-05 示例）
 
 | 指标 | 数值 |
 |---|---|
