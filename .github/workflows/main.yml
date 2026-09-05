@@ -19,9 +19,9 @@ jobs:
     name: 🛠️ 规则加工处理
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    # 屏蔽 GitHub 官方的 Node 20 废弃警告，保持日志干净
+    # 主动提前切入 Node 24 运行时（Node 20 将于 2026-09-16 从 Runner 移除）
     env:
-      ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     permissions:
       contents: write 
     
