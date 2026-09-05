@@ -75,14 +75,13 @@ jobs:
           fi
 
       - name: 📤 提交与推送
-        uses: stefanzweifel/git-auto-commit-action@v6
+        uses: stefanzweifel/git-auto-commit-action@v7
         with:
           commit_message: "🔄 auto: ADG rules update (Pro/AdRules/TIF Mini)"
           file_pattern: "my_adg_rules.txt" 
-          skip_fetch: true
 
       - name: 📦 上传产物
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: rules-${{ github.run_number }}
           path: my_adg_rules.txt
