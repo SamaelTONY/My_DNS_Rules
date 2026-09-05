@@ -27,12 +27,12 @@ jobs:
     
     steps:
       - name: ⬇️ 拉取仓库代码
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 1
 
       - name: 🐍 设置 Python 环境
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.11'
 
@@ -75,14 +75,14 @@ jobs:
           fi
 
       - name: 📤 提交与推送
-        uses: stefanzweifel/git-auto-commit-action@v5
+        uses: stefanzweifel/git-auto-commit-action@v6
         with:
           commit_message: "🔄 auto: ADG rules update (Pro/AdRules/TIF Mini)"
           file_pattern: "my_adg_rules.txt" 
           skip_fetch: true
 
       - name: 📦 上传产物
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: rules-${{ github.run_number }}
           path: my_adg_rules.txt
