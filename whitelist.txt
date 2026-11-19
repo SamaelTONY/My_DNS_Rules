@@ -15,7 +15,6 @@
 ||minorshort.weixin.qq.com^
 ||szextshort.weixin.qq.com^
 # 淘宝：登录风控/滑动验证（fourier 为风控域，放行换稳定）
-||acs.m.taobao.com^
 ||fourier.taobao.com^
 # 哔哩哔哩：弹幕/CDN
 ||biliapi.net^
